@@ -20,8 +20,8 @@ func Run() error {
 	if port == "" {
 		port = defaultPort
 	}
+	defer db.Close()
 
-	// Инициализация API должна быть ДО инициализации базы данных
 	api.Init()
 
 	dbFile := os.Getenv("TODO_DBFILE")
@@ -29,14 +29,10 @@ func Run() error {
 		dbFile = defaultDBFile
 	}
 
-	// Остальной код...
-
-	// Инициализация базы данных
 	if err := db.Init(dbFile); err != nil {
 		return fmt.Errorf("failed to initialize DB: %w", err)
 	}
 
-	// Обработчик файлов для фронтенда
 	http.Handle("/", http.FileServer(http.Dir(webDir)))
 
 	fmt.Printf("Server started at http://localhost:%s\n", port)

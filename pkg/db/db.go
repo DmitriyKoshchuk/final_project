@@ -33,13 +33,11 @@ func Init(dbFile string) error {
 	}
 
 	if install {
-		// Если файла не было — создаём схему
 		_, err = DB.Exec(schema)
 		if err != nil {
 			return fmt.Errorf("failed to create schema: %w", err)
 		}
 	} else {
-		// Если файл есть — проверяем таблицу
 		row := DB.QueryRow(`SELECT name FROM sqlite_master WHERE type='table' AND name='scheduler'`)
 		var name string
 		err = row.Scan(&name)
@@ -54,4 +52,8 @@ func Init(dbFile string) error {
 	}
 
 	return nil
+}
+
+func Close() error {
+	return DB.Close()
 }

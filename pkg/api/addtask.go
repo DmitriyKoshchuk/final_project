@@ -9,60 +9,40 @@ import (
 	"github.com/DmitriyKoshchuk/final_project/pkg/db"
 )
 
-const dateformat = "20060102"
-
 func addTaskHandler(w http.ResponseWriter, r *http.Request) {
-	var task db.Task
+	var t db.Task
+	if err := json.NewDecoder(r.Body).Decode(&t); err != nil {
+		writeJsonWithCode(w, http.StatusBadRequest, map[string]string{"error": "Invalid request"})
+		return
+	}
 
-	// Декодируем JSON из тела запроса
-	decoder := json.NewDecoder(r.Body)
-	err := decoder.Decode(&task)
+	if t.Date == "" || t.Title == "" {
+		writeJsonWithCode(w, http.StatusBadRequest, map[string]string{"error": "Date and title are required"})
+		return
+	}
+
+	id, err := db.AddTask(&t)
 	if err != nil {
-		writeJson(w, map[string]string{"error": "invalid JSON"})
+		writeJsonWithCode(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
 	}
 
-	// Проверка обязательного поля title
-	if task.Title == "" {
-		writeJson(w, map[string]string{"error": "title is required"})
-		return
-	}
-
-	// Проверяем и корректируем дату задачи
-	err = checkDate(&task)
-	if err != nil {
-		writeJson(w, map[string]string{"error": err.Error()})
-		return
-	}
-
-	// Добавляем задачу в базу данных
-	id, err := db.AddTask(&task)
-	if err != nil {
-		writeJson(w, map[string]string{"error": "failed to add task"})
-		return
-	}
-
-	// Возвращаем id созданной задачи
 	writeJson(w, map[string]string{"id": strconv.FormatInt(id, 10)})
 }
 
 func checkDate(task *db.Task) error {
-	// Сегодняшняя дата без времени
 	now := time.Now()
 	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
 
-	// Если дата пустая — берем сегодня
 	if task.Date == "" {
-		task.Date = today.Format(dateformat)
+		task.Date = today.Format(DateFormat)
 	}
 
-	// Парсим дату задачи
-	t, err := time.ParseInLocation(dateformat, task.Date, now.Location())
+	t, err := time.ParseInLocation(DateFormat, task.Date, now.Location())
 	if err != nil {
 		return err
 	}
 
-	// Если есть правило повторения, проверяем его и получаем следующую дату
 	var next string
 	if task.Repeat != "" {
 		next, err = NextDate(today, task.Date, task.Repeat)
@@ -71,42 +51,49 @@ func checkDate(task *db.Task) error {
 		}
 	}
 
-	// Если дата задачи в прошлом относительно сегодня
 	if !t.After(today) {
 		if task.Repeat == "" {
-			task.Date = today.Format(dateformat) // берем сегодня
+			task.Date = today.Format(DateFormat)
 		} else {
-			// Если дата раньше сегодняшней — берем следующую дату повторения
 			if t.Before(today) {
 				task.Date = next
 			}
-			// Если дата равна сегодняшней — оставляем без изменений
 		}
 	}
 
 	return nil
 }
 
-// Вспомогательная функция для отправки JSON-ответа
-func writeJson(w http.ResponseWriter, data any) {
-	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
-	json.NewEncoder(w).Encode(data)
+func writeJson(w http.ResponseWriter, data interface{}) {
+	writeJsonWithCode(w, http.StatusOK, data)
+}
+
+func writeJsonWithCode(w http.ResponseWriter, code int, data interface{}) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(code)
+
+	if data == nil {
+		w.Write([]byte("{}"))
+		return
+	}
+
+	_ = json.NewEncoder(w).Encode(data)
 }
 
 func getTaskHandler(w http.ResponseWriter, r *http.Request) {
 	id := r.URL.Query().Get("id")
 	if id == "" {
-		writeJson(w, map[string]string{"error": "Не указан идентификатор"})
+		writeJsonWithCode(w, http.StatusBadRequest, map[string]string{"error": "Не указан идентификатор"})
 		return
 	}
 
 	task, err := db.GetTask(id)
 	if err != nil {
-		writeJson(w, map[string]string{"error": "Задача не найдена"})
+		writeJsonWithCode(w, http.StatusNotFound, map[string]string{"error": "Задача не найдена"})
 		return
 	}
 
-	writeJson(w, task)
+	writeJsonWithCode(w, http.StatusOK, task)
 }
 
 func updateTaskHandler(w http.ResponseWriter, r *http.Request) {
@@ -114,77 +101,71 @@ func updateTaskHandler(w http.ResponseWriter, r *http.Request) {
 
 	err := json.NewDecoder(r.Body).Decode(&task)
 	if err != nil {
-		writeJson(w, map[string]string{"error": "invalid JSON"})
+		writeJsonWithCode(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON"})
 		return
 	}
 
 	if task.ID == "" {
-		writeJson(w, map[string]string{"error": "id is required"})
+		writeJsonWithCode(w, http.StatusBadRequest, map[string]string{"error": "id is required"})
 		return
 	}
 
 	if task.Title == "" {
-		writeJson(w, map[string]string{"error": "title is required"})
+		writeJsonWithCode(w, http.StatusBadRequest, map[string]string{"error": "title is required"})
 		return
 	}
 
 	err = checkDate(&task)
 	if err != nil {
-		writeJson(w, map[string]string{"error": err.Error()})
+		writeJsonWithCode(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
 	}
 
 	err = db.UpdateTask(&task)
 	if err != nil {
-		writeJson(w, map[string]string{"error": err.Error()})
+		writeJsonWithCode(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
 	}
 
-	writeJson(w, struct{}{}) // Пустой JSON
+	writeJsonWithCode(w, http.StatusOK, nil)
 }
 
 func doneTaskHandler(w http.ResponseWriter, r *http.Request) {
 	id := r.URL.Query().Get("id")
 	if id == "" {
-		writeJson(w, map[string]string{"error": "Не указан идентификатор"})
+		writeJsonWithCode(w, http.StatusBadRequest, map[string]string{"error": "Не указан идентификатор"})
 		return
 	}
 
 	task, err := db.GetTask(id)
 	if err != nil {
-		writeJson(w, map[string]string{"error": "Задача не найдена"})
+		writeJsonWithCode(w, http.StatusNotFound, map[string]string{"error": "Задача не найдена"})
 		return
 	}
 
-	// Если задача повторяющаяся
 	if task.Repeat != "" {
-		// Считаем следующую дату
 		nextDate, err := NextDate(taskDateToTime(task.Date), task.Date, task.Repeat)
 		if err != nil {
-			writeJson(w, map[string]string{"error": "Ошибка расчёта следующей даты"})
+			writeJsonWithCode(w, http.StatusInternalServerError, map[string]string{"error": "Ошибка расчёта следующей даты"})
 			return
 		}
 
-		// Обновляем дату задачи
 		err = db.UpdateDate(nextDate, task.ID)
 		if err != nil {
-			writeJson(w, map[string]string{"error": err.Error()})
+			writeJsonWithCode(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 			return
 		}
-
 	} else {
-		// Если одноразовая — удаляем
 		err = db.DeleteTask(task.ID)
 		if err != nil {
-			writeJson(w, map[string]string{"error": err.Error()})
+			writeJsonWithCode(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 			return
 		}
 	}
 
-	writeJson(w, struct{}{}) // пустой JSON в ответ
+	writeJsonWithCode(w, http.StatusOK, nil)
 }
 
-// Вспомогательная функция для преобразования строки даты "20060102" в time.Time
 func taskDateToTime(dateStr string) time.Time {
 	t, _ := time.Parse("20060102", dateStr)
 	return t
@@ -193,15 +174,15 @@ func taskDateToTime(dateStr string) time.Time {
 func deleteTaskHandler(w http.ResponseWriter, r *http.Request) {
 	id := r.URL.Query().Get("id")
 	if id == "" {
-		writeJson(w, map[string]string{"error": "Не указан идентификатор"})
+		writeJsonWithCode(w, http.StatusBadRequest, map[string]string{"error": "Missing id"})
 		return
 	}
 
 	err := db.DeleteTask(id)
 	if err != nil {
-		writeJson(w, map[string]string{"error": err.Error()})
+		writeJsonWithCode(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
 	}
 
-	writeJson(w, struct{}{})
+	writeJsonWithCode(w, http.StatusOK, nil)
 }

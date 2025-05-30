@@ -8,14 +8,14 @@ import (
 	"time"
 )
 
-const dateFormat = "20060102"
+const DateFormat = "20060102"
 
 func NextDate(now time.Time, dstart string, repeat string) (string, error) {
 	if repeat == "" {
 		return "", errors.New("empty repeat rule")
 	}
 
-	startDate, err := time.ParseInLocation(dateFormat, dstart, time.UTC)
+	startDate, err := time.ParseInLocation(DateFormat, dstart, time.UTC)
 	if err != nil {
 		return "", errors.New("invalid start date format")
 	}
@@ -36,7 +36,6 @@ func NextDate(now time.Time, dstart string, repeat string) (string, error) {
 			return "", errors.New("invalid number of days")
 		}
 
-		// Просто добавляем days дней к начальной дате, пока не получим дату после now
 		next := startDate
 		for {
 			next = next.AddDate(0, 0, days)
@@ -44,7 +43,7 @@ func NextDate(now time.Time, dstart string, repeat string) (string, error) {
 				break
 			}
 		}
-		return next.Format(dateFormat), nil
+		return next.Format(DateFormat), nil
 
 	case "y":
 		if len(parts) != 1 {
@@ -55,7 +54,6 @@ func NextDate(now time.Time, dstart string, repeat string) (string, error) {
 		for {
 			next = next.AddDate(1, 0, 0)
 
-			// Обработка 29 февраля
 			if startDate.Month() == time.February && startDate.Day() == 29 {
 				if !isLeapYear(next.Year()) {
 					next = time.Date(next.Year(), time.March, 1, 0, 0, 0, 0, time.UTC)
@@ -66,7 +64,7 @@ func NextDate(now time.Time, dstart string, repeat string) (string, error) {
 				break
 			}
 		}
-		return next.Format(dateFormat), nil
+		return next.Format(DateFormat), nil
 
 	default:
 		return "", errors.New("unsupported repeat format")
@@ -79,7 +77,7 @@ func isLeapYear(year int) bool {
 
 func nextDayHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		writeJsonWithCode(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
 		return
 	}
 
@@ -92,18 +90,18 @@ func nextDayHandler(w http.ResponseWriter, r *http.Request) {
 	if nowStr == "" {
 		now = time.Now()
 	} else {
-		now, err = time.Parse(dateFormat, nowStr)
+		now, err = time.Parse(DateFormat, nowStr)
 		if err != nil {
-			http.Error(w, "invalid now date", http.StatusBadRequest)
+			writeJsonWithCode(w, http.StatusBadRequest, map[string]string{"error": "invalid now date"})
 			return
 		}
 	}
 
 	next, err := NextDate(now, dstart, repeat)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		writeJsonWithCode(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
 	}
 
-	w.Write([]byte(next))
+	writeJsonWithCode(w, http.StatusOK, map[string]string{"date": next})
 }

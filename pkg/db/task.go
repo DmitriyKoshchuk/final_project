@@ -15,9 +15,11 @@ type Task struct {
 	Repeat  string `json:"repeat"`
 }
 
+const DateFormat = "20060102"
+
 func AddTask(task *Task) (int64, error) {
 	query := `INSERT INTO scheduler (date, title, comment, repeat) VALUES (?, ?, ?, ?)`
-	res, err := DB.Exec(query, task.Date, task.Title, task.Comment, task.Repeat) // <- используем DB
+	res, err := DB.Exec(query, task.Date, task.Title, task.Comment, task.Repeat)
 	if err != nil {
 		return 0, err
 	}
@@ -29,17 +31,13 @@ func Tasks(limit int, search string) ([]*Task, error) {
 	var err error
 
 	if search == "" {
-		// Без фильтра — просто берем все задачи, отсортированные по дате
 		rows, err = DB.Query(`SELECT id, date, title, comment, repeat FROM scheduler ORDER BY date LIMIT ?`, limit)
 	} else {
-		// Проверим, не дата ли это (формат 02.01.2006)
 		t, errDate := time.Parse("02.01.2006", search)
 		if errDate == nil {
-			// Это дата — ищем по точному совпадению
-			date := t.Format("20060102")
+			date := t.Format(DateFormat)
 			rows, err = DB.Query(`SELECT id, date, title, comment, repeat FROM scheduler WHERE date = ? ORDER BY date LIMIT ?`, date, limit)
 		} else {
-			// Иначе — ищем подстроку в title или comment (через LIKE)
 			likeSearch := "%" + search + "%"
 			rows, err = DB.Query(`SELECT id, date, title, comment, repeat FROM scheduler WHERE title LIKE ? OR comment LIKE ? ORDER BY date LIMIT ?`, likeSearch, likeSearch, limit)
 		}
@@ -59,7 +57,7 @@ func Tasks(limit int, search string) ([]*Task, error) {
 		if err != nil {
 			return nil, fmt.Errorf("DB scan failed: %w", err)
 		}
-		t.ID = strconv.FormatInt(id, 10) // <-- тут преобразуем id в строку
+		t.ID = strconv.FormatInt(id, 10)
 		tasks = append(tasks, &t)
 	}
 

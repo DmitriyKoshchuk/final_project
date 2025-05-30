@@ -9,10 +9,9 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 )
 
-var jwtSecret = []byte(os.Getenv("12345"))
+var jwtSecret = []byte(os.Getenv("TODO_PASSWORD"))
 
 func generateToken() (string, error) {
-	// Используем хеш пароля в качестве claims
 	hash := sha256.Sum256(jwtSecret)
 	claims := jwt.MapClaims{
 		"hash": hex.EncodeToString(hash[:]),
@@ -32,7 +31,6 @@ func validateToken(tokenString string) bool {
 		return false
 	}
 
-	// Проверяем хеш пароля
 	if claims, ok := token.Claims.(jwt.MapClaims); ok {
 		currentHash := sha256.Sum256(jwtSecret)
 		return claims["hash"] == hex.EncodeToString(currentHash[:])
