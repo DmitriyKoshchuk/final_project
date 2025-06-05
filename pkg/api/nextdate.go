@@ -7,16 +7,52 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"go1f/pkg/db"
 )
 
-const dateFormat = "20060102"
+func nextDateHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeJson(w, http.StatusMethodNotAllowed, map[string]string{"error": "Метод не поддерживается"})
+		return
+	}
+
+	nowStr := r.FormValue("now")
+	date := r.FormValue("date")
+	repeat := r.FormValue("repeat")
+
+	var now time.Time
+	var err error
+
+	if nowStr == "" {
+		now = time.Now()
+	} else {
+		now, err = time.Parse(db.DateFormat, nowStr)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, fmt.Errorf("invalid now date"))
+			return
+		}
+	}
+
+	next, err := NextDate(now, date, repeat)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/plain")
+	if _, err := w.Write([]byte(next)); err != nil {
+		writeError(w, http.StatusInternalServerError, fmt.Errorf("failed to write response"))
+		return
+	}
+}
 
 func NextDate(now time.Time, dstart string, repeat string) (string, error) {
 	if repeat == "" {
 		return "", errors.New("empty repeat rule")
 	}
 
-	start, err := time.Parse(dateFormat, dstart)
+	start, err := time.Parse(db.DateFormat, dstart)
 	if err != nil {
 		return "", fmt.Errorf("invalid start date: %w", err)
 	}
@@ -37,7 +73,7 @@ func NextDate(now time.Time, dstart string, repeat string) (string, error) {
 				break
 			}
 		}
-		return start.Format(dateFormat), nil
+		return start.Format(db.DateFormat), nil
 	case "y":
 		if len(parts) != 1 {
 			return "", errors.New("invalid yearly format")
@@ -48,7 +84,7 @@ func NextDate(now time.Time, dstart string, repeat string) (string, error) {
 				break
 			}
 		}
-		return start.Format(dateFormat), nil
+		return start.Format(db.DateFormat), nil
 	default:
 		return "", errors.New("unsupported repeat format")
 	}
@@ -64,32 +100,4 @@ func afterNow(date, now time.Time) bool {
 		return m1 > m2
 	}
 	return d1 > d2
-}
-
-func nextDateHandler(w http.ResponseWriter, r *http.Request) {
-	nowStr := r.FormValue("now")
-	date := r.FormValue("date")
-	repeat := r.FormValue("repeat")
-
-	var now time.Time
-	var err error
-
-	if nowStr == "" {
-		now = time.Now()
-	} else {
-		now, err = time.Parse(dateFormat, nowStr)
-		if err != nil {
-			http.Error(w, "invalid now date", http.StatusBadRequest)
-			return
-		}
-	}
-
-	next, err := NextDate(now, date, repeat)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-
-	w.Header().Set("Content-Type", "text/plain")
-	w.Write([]byte(next))
 }
